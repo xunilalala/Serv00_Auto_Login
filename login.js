@@ -2,93 +2,87 @@ const fs = require('fs');
 const puppeteer = require('puppeteer');
 
 function formatToISO(date) {
-  return date.toISOString().replace('T', ' ').replace('Z', '').replace(/\.\d{3}Z/, '');
+return date.toISOString().replace('T', ' ').replace('Z', '').replace(/.\d{3}Z/, '');
 }
 
 async function delayTime(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 使用环境变量读取账户信息
-const accountsJson = fs.readFileSync('.env.json', 'utf-8');
+(async () => {
+// 读取 accounts.json 中的 JSON 字符串
+const accountsJson = fs.readFileSync('accounts.json', 'utf-8');
 const accounts = JSON.parse(accountsJson);
 
-(async () => {
-  try {
-    for (const account of accounts) {
-      const { username, password, panelnum } = account;
-
-      console.log(`正在尝试登录账号 ${username}...`);
+for (const account of accounts) {
+const { username, password, panelnum } = account;
 
       // 启动浏览器
-      const browser = await puppeteer.launch({
+  const browser = await puppeteer.launch({
         args: ['--no-sandbox'],
         headless: false,
       });
-      const page = await browser.newPage();
+const page = await browser.newPage();
 
-      let url = `https://panel${panelnum}.serv00.com/login/?next=/`;
+let url = `https://panel${panelnum}.serv00.com/login/?next=/`;
 
-      try {
-        // 前往登录页面
-        await page.goto(url);
+try {
+// 修改网址为新的登录页面
+await page.goto(url);
 
-        console.log(`前往 ${url} 成功`);
+// 清空用户名输入框的原有值
+const usernameInput = await page.$('#id_username');
+if (usernameInput) {
+await usernameInput.click({ clickCount: 3 }); // 选中输入框的内容
+await usernameInput.press('Backspace'); // 删除原来的值
+}
 
-        // 清空用户名输入框的原有值
-        const usernameInput = await page.waitForSelector('#id_username');
-        if (usernameInput) {
-          await usernameInput.click({ clickCount: 3 });
-          await usernameInput.press('Backspace'); // 删除原来的值
-        }
+// 输入实际的账号和密码
+await page.type('#id_username', username);
+await page.type('#id_password', password);
 
-        console.log(`清空了用户名输入框的内容`);
+// 提交登录表单
+const loginButton = await page.$('#submit');
+if (loginButton) {
+await loginButton.click();
+} else {
+throw new Error('无法找到登录按钮');
+}
 
-        // 输入实际的账号和密码
-        await page.type('#id_username', username);
-        await page.type('#id_password', password);
+// 等待登录成功（如果有跳转页面的话）
+await page.waitForNavigation();
 
-        console.log(`已填写用户名 ${username} 和密码`);
+// 判断是否登录成功
+const isLoggedIn = await page.evaluate(() => {
+const logoutButton = document.querySelector('a[href="/logout/"]');
+return logoutButton !== null;
+});
 
-        // 提交登录表单
-        const loginButton = await page.waitForSelector('#submit');
-        if (loginButton) {
-          await loginButton.click();
-        } else {
-          throw new Error('无法找到登录按钮');
-        }
+if (isLoggedIn) {
+// 获取当前的UTC时间和北京时间
+const nowUtc = formatToISO(new Date());// UTC时间
+const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000)); // 北京时间东8区，用算术来搞
+console.log(`账号 ${username} 于北京时间 ${nowBeijing}（UTC时间 ${nowUtc}）登录成功！`);
+} else {
+console.error(`账号 ${username} 登录失败，请检查账号和密码是否正确。`);
+}
+} catch (error) {
+console.error(`账号 ${username} 登录时出现错误: ${error}`);
+} finally {
+// 关闭页面和浏览器
+await page.close();
+await browser.close();
 
-        console.log(`提交了登录请求`);
+// 用户之间添加随机延时
+const delay = Math.floor(Math.random() * 8000) + 1000; // 随机延时1秒到8秒之间
+await delayTime(delay);
+}
+}
 
-        // 等待页面跳转，检查是否成功登录
-        const isLoggedIn = await page.evaluate(() => {
-          return document.querySelector('a[href="/logout/"]') !== null;
-        });
-
-        if (isLoggedIn) {
-          const nowUtc = formatToISO(new Date());
-          const nowBeijing = formatToISO(new Date().getTime() + 8 * 60 * 60 * 1000);
-          console.log(`账号 ${username} 登录成功，北京时间：${nowBeijing}（UTC时间：${nowUtc})`);
-        } else {
-          console.error(`账号 ${username} 登录失败，请检查账户和密码是否正确`);
-        }
-
-      } catch (error) {
-        console.error(`账号 ${username} 登录时出现错误: ${error}`);
-      } finally {
-        // 关闭页面和浏览器
-        await page.close();
-        await browser.close();
-
-        const delay = Math.floor(Math.random() * 8000) + 1000;
-        console.log(`等待 ${delay / 1000} 秒...`);
-        await delayTime(delay);
-      }
-    }
-
-    console.log('所有账号登录完成！');
-
-  } catch (error) {
-    console.error(`程序执行过程中出现错误: ${error}`);
-  }
+console.log('所有账号登录完成！');
 })();
+
+// 自定义延时函数
+function delayTime(ms) {
+return new Promise(resolve => setTimeout(resolve, ms));
+}
